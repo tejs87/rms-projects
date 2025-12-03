@@ -1,63 +1,75 @@
+// src/pages/Login.jsx
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import api from "../api/axios";
 
-function Login() {
+export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
-  const handleLogin = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
+    if (!email || !password) return alert("Enter email and password");
+    setLoading(true);
+    try {
+      // POST to /api/auth/login
+      const res = await api.post("/auth/login", { email, password });
+      // expecting { token, user }
+      const token = res.data.token;
+      const user = res.data.user || null;
 
-    const res = await fetch("http://localhost:5000/api/auth/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email, password }),
-    });
+      if (!token) throw new Error("Token not returned by server");
 
-    const data = await res.json();
+      localStorage.setItem("token", token);
+      if (user) localStorage.setItem("user", JSON.stringify(user));
 
-    if (res.ok) {
-      localStorage.setItem("token", data.token);
-      window.location.href = "/dashboard";
-    } else {
-      alert(data.message);
+      // go to dashboard
+      navigate("/dashboard");
+    } catch (err) {
+      console.error("Login error:", err.response?.data || err.message);
+      alert(err.response?.data?.message || "Login failed");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="h-screen flex items-center justify-center bg-gray-100">
-      <div className="w-96 bg-white shadow-lg rounded-xl p-8">
-        <h1 className="text-3xl font-bold text-center mb-6">RMS Login</h1>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <form onSubmit={submit} className="bg-white p-6 rounded shadow w-96">
+        <h2 className="text-2xl font-bold mb-4 text-center">Sign in</h2>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <label className="block mb-2">
+          <div className="text-sm">Email</div>
           <input
-            type="email"
-            className="w-full p-3 rounded-lg bg-gray-50 border"
-            placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            className="w-full border p-2 rounded"
+            type="email"
+            required
           />
+        </label>
 
+        <label className="block mb-4">
+          <div className="text-sm">Password</div>
           <input
-            type="password"
-            className="w-full p-3 rounded-lg bg-gray-50 border"
-            placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            className="w-full border p-2 rounded"
+            type="password"
+            required
           />
+        </label>
 
-          <button
-            type="submit"
-            className="w-full bg-blue-600 text-white p-3 rounded-lg font-semibold hover:bg-blue-700"
-          >
-            Login
-          </button>
-        </form>
-      </div>
+        <button
+          type="submit"
+          className="w-full bg-blue-600 text-white p-2 rounded"
+          disabled={loading}
+        >
+          {loading ? "Signing in..." : "Sign in"}
+        </button>
+      </form>
     </div>
   );
 }
-
-
-export default Login;

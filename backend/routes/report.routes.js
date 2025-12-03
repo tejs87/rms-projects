@@ -1,74 +1,43 @@
+// backend/routes/report.routes.js
 const express = require("express");
 const router = express.Router();
 const Order = require("../models/order.model");
-const Inventory = require("../models/inventory.model");
-const Recipe = require("../models/recipe.model");
-const DeductLog = require("../models/deductLog.model");
 const auth = require("../middleware/auth.middleware");
-// DAILY SALES REPORT
-router.get("/sales/daily", auth, async (req, res) => {
-    try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+const role = require("../middleware/role.middleware");
 
-        const orders = await Order.find({
-            isPaid: true,
-            paidAt: { $gte: today }
-        });
+// GET /api/reports/sales?start=YYYY-MM-DD&end=YYYY-MM-DD
+// Requires admin or manager
+router.get("/sales", auth, role(["admin","manager"]), async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    const startDate = start ? new Date(start) : new Date(0);
+    const endDate = end ? new Date(end + "T23:59:59.999Z") : new Date();
 
-        let totalSales = 0;
-        let paymentBreakup = {
-            cash: 0,
-            card: 0,
-            upi: 0
-        };
+    // fetch orders completed between dates (or include all statuses if you prefer)
+    const orders = await Order.find({
+      createdAt: { $gte: startDate, $lte: endDate }
+    }).lean();
 
-        orders.forEach(order => {
-            totalSales += order.totalAmount;
-            paymentBreakup[order.paymentMethod] += order.totalAmount;
-        });
+    // compute totals and top items
+    const totalSales = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    const ordersCount = orders.length;
 
-        res.json({
-            date: today,
-            totalSales,
-            paymentBreakup,
-            totalOrders: orders.length
-        });
-    } catch (err) {
-        res.status(500).json({ message: "Server error", error: err.message });
+    const itemsMap = {};
+    for (const o of orders) {
+      (o.items || []).forEach(it => {
+        const name = it.name || "Unknown";
+        if (!itemsMap[name]) itemsMap[name] = { name, qty: 0, revenue: 0 };
+        itemsMap[name].qty += Number(it.quantity || 0);
+        itemsMap[name].revenue += Number(it.price || 0) * Number(it.quantity || 0);
+      });
     }
+    const topItems = Object.values(itemsMap).sort((a,b) => b.qty - a.qty);
+
+    res.json({ totalSales, ordersCount, topItems, orders });
+  } catch (err) {
+    console.error("REPORTS ERROR:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
 });
-// BEST SELLING ITEMS
-router.get("/sales/items", auth, async (req, res) => {
-    try {
-        const orders = await Order.find({ isPaid: true });
 
-        let itemCount = {};
-
-        orders.forEach(order => {
-            order.items.forEach(i => {
-                if (!itemCount[i.name]) itemCount[i.name] = 0;
-                itemCount[i.name] += i.quantity;
-            });
-        });
-
-        res.json(itemCount);
-    } catch (err) {
-        res.status(500).json({ message: "Server error", error: err.message });
-    }
-});
-// LOW STOCK ALERT
-router.get("/inventory/low", auth, async (req, res) => {
-    try {
-        const items = await Inventory.find({
-            quantity: { $lte: 50 }    // threshold
-        });
-
-        res.json(items);
-
-    } catch (err) {
-        res.status(500).json({ message: "Server error", error: err.message });
-    }
-});
 module.exports = router;
-    

@@ -12,6 +12,8 @@ import ReportsPage from "./pages/Reports";
 import DeductionRequest from "./pages/DeductionRequest";
 import DeductionApproval from "./pages/DeductionApproval";
 import TableManagement from "./pages/TableManagement";
+import Users from "./pages/Users";
+import Billing from "./pages/Billing";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -30,6 +32,8 @@ function App() {
             <Route path="/kot" element={<KOT />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/tables" element={<TableManagement />} />
+            <Route path="/billing" element={<Billing />} />
+
           </Route>
 
           {/* Admin & Manager pages */}
@@ -38,7 +42,8 @@ function App() {
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/users" element={<UsersPage />} />
-            
+            <Route path="/users" element={<Users />} />
+
           </Route>
 
           {/* Staff pages */}

@@ -28,6 +28,7 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/feedback", require("./routes/feedback.routes"));
 app.use("/api/invoice", invoiceRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/users", require("./routes/user.routes"));
 
 
 // Test route

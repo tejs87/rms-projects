@@ -12,23 +12,47 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState(null);
   const token = localStorage.getItem("token");
+  axios.get('/api/orders', {
+  headers: { Authorization: `Bearer ${token}` }
+  })
 
   const fetchReport = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get(
-        `http://localhost:5000/api/reports/sales?start=${start}&end=${end}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setReport(res.data);
-    } catch (err) {
-      console.error("REPORT LOAD ERROR:", err.response?.data || err);
-      alert("Could not load report. See console.");
-      setReport(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+  setLoading(true);
+  try {
+    const res = await axios.get("http://localhost:5000/api/orders", {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const orders = (res.data || []).filter(o => {
+      const created = new Date(o.createdAt);
+      const s = new Date(start);
+      const e = new Date(end + "T23:59:59.999Z");
+      return created >= s && created <= e;
+    });
+
+    const totalSales = orders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+    const ordersCount = orders.length;
+
+    const itemsMap = {};
+    orders.forEach(o => {
+      (o.items || []).forEach(it => {
+        if (!itemsMap[it.name]) itemsMap[it.name] = { name: it.name, qty: 0, revenue: 0 };
+        itemsMap[it.name].qty += Number(it.quantity || 0);
+        itemsMap[it.name].revenue += Number(it.price || 0) * Number(it.quantity || 0);
+      });
+    });
+
+    const topItems = Object.values(itemsMap).sort((a,b) => b.qty - a.qty);
+
+    setReport({ totalSales, ordersCount, topItems, orders });
+  } catch (err) {
+    console.error("REPORT LOAD ERROR (fallback):", err.response?.data || err);
+    alert("Could not load orders to compute report. See console.");
+    setReport(null);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   useEffect(() => {
     // auto-load once on mount
@@ -158,6 +182,7 @@ export default function ReportsPage() {
           </div>
         </div>
       )}
+
 
       {!loading && !report && (
         <div className="text-gray-500">No data loaded. Click "Load Report".</div>

@@ -1,31 +1,29 @@
 // src/pages/Users.jsx
 import { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../api/axios";
+import UserForm from "../components/UserForm";
 
-export default function UsersPage() {
+export default function Users() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [selectedUser, setSelectedUser] = useState(null); // for edit
+  const [showForm, setShowForm] = useState(false);
 
-  // form
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState("staff");
-
-  const token = localStorage.getItem("token");
-  const api = axios.create({
-    baseURL: "http://localhost:5000/api",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const pageSize = 10;
 
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const res = await api.get("/users"); // backend: GET /api/users
-      setUsers(res.data || []);
+      const res = await api.get("/users", { params: { q, page, limit: pageSize } });
+      // expected: { data: usersArray, page, totalPages }
+      setUsers(res.data.data || res.data);
+      setTotalPages(res.data.totalPages || 1);
     } catch (err) {
-      console.error("LOAD USERS ERR:", err.response?.data || err);
-      setUsers([]);
+      console.error("LOAD USERS ERR:", err.response?.data || err.message);
+      alert(err.response?.data?.message || "Users load failed");
     } finally {
       setLoading(false);
     }
@@ -34,103 +32,113 @@ export default function UsersPage() {
   useEffect(() => {
     loadUsers();
     // eslint-disable-next-line
-  }, []);
+  }, [q, page]);
 
-  const createUser = async () => {
-    if (!name || !email || !password) return alert("Fill all fields");
-    try {
-      await api.post("/auth/register", { name, email, password, role }); // or /users depending on backend
-      setName(""); setEmail(""); setPassword(""); setRole("staff");
-      loadUsers();
-      alert("User created");
-    } catch (err) {
-      console.error("CREATE USER ERR:", err.response?.data || err);
-      alert(err.response?.data?.message || "Create failed");
-    }
+  const openCreate = () => {
+    setSelectedUser(null);
+    setShowForm(true);
   };
 
-  const deleteUser = async (id) => {
-    if (!window.confirm("Delete this user?")) return;
+  const openEdit = (u) => {
+    setSelectedUser(u);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm("Are you sure you want to delete this user?")) return;
     try {
-      await api.delete(`/users/${id}`); // backend: DELETE /api/users/:id
+      await api.delete(`/users/${id}`);
+      alert("Deleted");
       loadUsers();
     } catch (err) {
-      console.error("DELETE USER ERR:", err.response?.data || err);
+      console.error("DELETE ERR:", err.response?.data || err.message);
       alert("Delete failed");
     }
   };
 
-  const updateRole = async (id, newRole) => {
+  const toggleStatus = async (id, current) => {
     try {
-      await api.put(`/users/${id}`, { role: newRole }); // backend: PUT /api/users/:id
+      await api.put(`/users/status/${id}`, { active: !current });
       loadUsers();
     } catch (err) {
-      console.error("UPDATE ROLE ERR:", err.response?.data || err);
-      alert("Update failed");
+      console.error("STATUS ERR:", err.response?.data || err.message);
     }
+  };
+
+  const onFormSaved = () => {
+    setShowForm(false);
+    loadUsers();
   };
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">User / Staff Management</h1>
-
-      <div className="mb-6 bg-white p-4 rounded shadow">
-        <h2 className="font-semibold mb-2">Create New User</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-          <input className="border p-2" placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
-          <input className="border p-2" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-          <input className="border p-2" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} />
-          <select className="border p-2" value={role} onChange={e=>setRole(e.target.value)}>
-            <option value="staff">Staff</option>
-            <option value="kitchen">Kitchen</option>
-            <option value="manager">Manager</option>
-            <option value="admin">Admin</option>
-            <option value="cashier">cashier</option>
-            <option value="inventoryManager">inventoryManager</option>
-          </select>
-        </div>
-        <div className="mt-3">
-          <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={createUser}>Create</button>
-        </div>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">User Management</h1>
+        <button onClick={openCreate} className="bg-blue-600 text-white px-4 py-2 rounded">
+          + Add User
+        </button>
       </div>
 
-      <div className="bg-white rounded shadow p-4">
-        <h2 className="font-semibold mb-3">All Users</h2>
-        {loading ? <div>Loading...</div> : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="p-2 text-left">Name</th>
-                <th className="p-2 text-left">Email</th>
-                <th className="p-2 text-left">Role</th>
-                <th className="p-2 text-center">Actions</th>
+      <div className="flex gap-2 mb-4">
+        <input
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setPage(1); }}
+          placeholder="Search by name or email"
+          className="border p-2 rounded w-1/3"
+        />
+      </div>
+
+      <div className="bg-white rounded shadow">
+        <table className="min-w-full table-auto">
+          <thead>
+            <tr className="bg-gray-100 text-left">
+              <th className="p-2">Name</th>
+              <th className="p-2">Email</th>
+              <th className="p-2">Role</th>
+              <th className="p-2">Status</th>
+              <th className="p-2">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan="5" className="p-4">Loading...</td></tr>
+            ) : users.length === 0 ? (
+              <tr><td colSpan="5" className="p-4">No users found</td></tr>
+            ) : users.map((u) => (
+              <tr key={u._id} className="border-t">
+                <td className="p-2">{u.name}</td>
+                <td className="p-2">{u.email}</td>
+                <td className="p-2">{u.role}</td>
+                <td className="p-2">
+                  <button
+                    onClick={() => toggleStatus(u._id, u.active)}
+                    className={`px-2 py-1 rounded ${u.active ? "bg-green-200" : "bg-red-200"}`}
+                  >
+                    {u.active ? "Active" : "Inactive"}
+                  </button>
+                </td>
+                <td className="p-2 flex gap-2">
+                  <button onClick={() => openEdit(u)} className="px-2 py-1 bg-yellow-300 rounded">Edit</button>
+                  <button onClick={() => handleDelete(u._id)} className="px-2 py-1 bg-red-400 text-white rounded">Delete</button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {users.map(u => (
-                <tr key={u._id} className="border-t">
-                  <td className="p-2">{u.name}</td>
-                  <td className="p-2">{u.email}</td>
-                  <td className="p-2">
-                    <select value={u.role} onChange={(e)=>updateRole(u._id, e.target.value)} className="border p-1">
-                      <option value="staff">Staff</option>
-                      <option value="kitchen">Kitchen</option>
-                      <option value="manager">Manager</option>
-                      <option value="admin">Admin</option>
-                      <option value="cashier">cashier</option>
-                      <option value="inventoryManager">inventoryManager</option>
-                    </select>
-                  </td>
-                  <td className="p-2 text-center">
-                    <button onClick={()=>deleteUser(u._id)} className="text-sm bg-red-500 text-white px-3 py-1 rounded">Delete</button>
-                  </td>
-                </tr>
-              ))}
-              {users.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-gray-500">No users yet</td></tr>}
-            </tbody>
-          </table>
-        )}
+            ))}
+          </tbody>
+        </table>
+
+        {/* Pagination */}
+        <div className="p-4 flex justify-between items-center">
+          <div>Page {page} of {totalPages}</div>
+          <div className="flex gap-2">
+            <button disabled={page<=1} onClick={() => setPage(p => p-1)} className="px-3 py-1 border rounded">Prev</button>
+            <button disabled={page>=totalPages} onClick={() => setPage(p => p+1)} className="px-3 py-1 border rounded">Next</button>
+          </div>
+        </div>
       </div>
+
+      {showForm && (
+        <UserForm user={selectedUser} onClose={() => setShowForm(false)} onSaved={onFormSaved} />
+      )}
     </div>
   );
 }
