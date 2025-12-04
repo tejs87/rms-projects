@@ -14,6 +14,9 @@ import DeductionApproval from "./pages/DeductionApproval";
 import TableManagement from "./pages/TableManagement";
 import Users from "./pages/Users";
 import Billing from "./pages/Billing";
+import BillingHistory from "./pages/BillingHistory";
+import BillingPending from "./pages/BillingPending";
+
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -33,6 +36,9 @@ function App() {
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/tables" element={<TableManagement />} />
             <Route path="/billing" element={<Billing />} />
+            <Route path="/billing-history" element={<BillingHistory />} />
+            <Route path="/billing-pending" element={<BillingPending />} />
+
 
           </Route>
 

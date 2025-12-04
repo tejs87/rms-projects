@@ -1,61 +1,55 @@
 const express = require("express");
 const router = express.Router();
 const Inventory = require("../models/inventory.model");
-const auth = require("../middleware/auth.middleware");
 
-// Add Inventory Item
-router.post("/add", auth, async (req, res) => {
-    try {
-        const { itemName, quantity, unit, lowStockLevel } = req.body;
-
-        const item = new Inventory({
-            itemName,
-            quantity,
-            unit,
-            lowStockLevel
-        });
-
-        await item.save();
-        res.json({ message: "Inventory item added" });
-
-    } catch (error) {
-        res.status(500).json({ message: "Server error" });
-    }
+// GET ALL ITEMS
+router.get("/", async (req, res) => {
+  try {
+    const items = await Inventory.find().sort({ createdAt: -1 });
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
-// Get All Inventory Items
-router.get("/", auth, async (req, res) => {
-    try {
-        const items = await Inventory.find();
-        res.json(items);
+// ADD NEW ITEM
+router.post("/add", async (req, res) => {
+  try {
+    console.log("ADD API HIT:", req.body); // Debugger
+    const newItem = new Inventory(req.body);
+    await newItem.save();
 
-    } catch (error) {
-        res.status(500).json({ message: "Server error" });
-    }
+    res.json({ message: "Item added", item: newItem });
+  } catch (err) {
+    console.error("ADD ERROR:", err);
+    res.status(500).json({ message: err.message });
+  }
 });
 
-// Update Inventory Stock
-router.put("/update/:id", auth, async (req, res) => {
-    try {
-        req.body.updatedAt = Date.now();
+// UPDATE ITEM
+router.put("/update/:id", async (req, res) => {
+  try {
+    const updated = await Inventory.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
 
-        await Inventory.findByIdAndUpdate(req.params.id, req.body);
-        res.json({ message: "Inventory updated" });
-
-    } catch (error) {
-        res.status(500).json({ message: "Server error" });
-    }
+    res.json({ message: "Item updated", updated });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
-// Delete Inventory Item
-router.delete("/delete/:id", auth, async (req, res) => {
-    try {
-        await Inventory.findByIdAndDelete(req.params.id);
-        res.json({ message: "Inventory item deleted" });
+// DELETE ITEM
+router.delete("/delete/:id", async (req, res) => {
+  try {
+    await Inventory.findByIdAndDelete(req.params.id);
 
-    } catch (error) {
-        res.status(500).json({ message: "Server error" });
-    }
+    res.json({ message: "Item deleted" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 module.exports = router;

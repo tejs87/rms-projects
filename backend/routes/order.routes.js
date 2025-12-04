@@ -83,6 +83,26 @@ router.get("/", auth, async (req, res) => {
     }
 });
 
+// BILLING HISTORY (Paid Orders)
+router.get("/billing/history", auth, async (req, res) => {
+  try {
+    const orders = await Order.find({ isPaid: true }).sort({ paidAt: -1 });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
+// PENDING BILLS (Unpaid Orders)
+router.get("/billing/pending", auth, async (req, res) => {
+  try {
+    const orders = await Order.find({ isPaid: false }).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+});
+
 // UPDATE ORDER STATUS
 router.put("/status/:id", auth, async (req, res) => {
     try {
@@ -123,28 +143,72 @@ router.put("/kot/status/:id", auth, async (req, res) => {
     }
 });
 
-// PAYMENT: Complete Order with Payment
+// GET SINGLE ORDER
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
 router.put("/pay/:id", auth, async (req, res) => {
-    try {
-        const { paymentMethod } = req.body;
+  try {
+    const {
+      paymentMethod,
+      customerName,
+      customerPhone,
+      discount,
+      tax,
+      serviceCharge,
+      grandTotal
+    } = req.body;
 
-        if (!["cash", "card", "upi"].includes(paymentMethod)) {
-            return res.status(400).json({ message: "Invalid payment method" });
-        }
-
-        await Order.findByIdAndUpdate(req.params.id, {
-            paymentMethod,
-            isPaid: true,
-            paidAt: Date.now(),
-            status: "completed"
-        });
-
-        res.json({ message: "Payment successful" });
-
-    } catch (error) {
-        console.error("PAYMENT ERROR:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
+    if (!["cash", "card", "upi"].includes(paymentMethod)) {
+      return res.status(400).json({ message: "Invalid payment method" });
     }
+
+    // Generate Invoice Number
+    const invoiceNumber = "INV-" + Date.now();
+
+    const updatedOrder = await Order.findByIdAndUpdate(
+      req.params.id,
+      {
+        paymentMethod,
+        isPaid: true,
+        paidAt: Date.now(),
+        status: "completed",
+
+        // ⭐ NEW FIELDS
+        customerName,
+        customerPhone,
+        discount,
+        tax,
+        serviceCharge,
+        grandTotal,
+        invoiceNumber
+      },
+      { new: true }
+    );
+
+    // Free table after billing
+    const Table = require("../models/table.model");
+    await Table.findOneAndUpdate(
+      { tableNumber: updatedOrder.tableNumber },
+      { status: "free", currentOrderId: null }
+    );
+
+    res.json({
+      message: "Payment successful",
+      order: updatedOrder
+    });
+
+  } catch (error) {
+    console.error("PAYMENT ERROR:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
 });
 
 module.exports = router;

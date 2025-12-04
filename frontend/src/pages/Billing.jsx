@@ -1,163 +1,161 @@
-// src/pages/Billing.jsx
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import api from "../api/axios";
 
-function CartItem({ item, onQtyChange, onRemove }) {
-  return (
-    <div className="flex justify-between items-center border p-2 rounded">
-      <div>
-        <div className="font-semibold">{item.name}</div>
-        <div className="text-sm text-gray-500">₹{item.price}</div>
-      </div>
-      <div className="flex items-center gap-2">
-        <button onClick={() => onQtyChange(item._id, Math.max(1, item.quantity - 1))} className="px-2">-</button>
-        <div>{item.quantity}</div>
-        <button onClick={() => onQtyChange(item._id, item.quantity + 1)} className="px-2">+</button>
-        <button onClick={() => onRemove(item._id)} className="ml-3 text-red-600">Remove</button>
-      </div>
-    </div>
-  );
-}
-
 export default function Billing() {
-  const [menu, setMenu] = useState([]);
-  const [cart, setCart] = useState([]);
-  const [tableNumber, setTableNumber] = useState("");
+  const [searchParams] = useSearchParams();
+  const orderId = searchParams.get("orderId");
+
+  const navigate = useNavigate();
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Billing Fields
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [discount, setDiscount] = useState(0);
-  const [taxPercent, setTaxPercent] = useState(5);
-  const [loading, setLoading] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("");
 
   useEffect(() => {
-    loadMenu();
-  }, []);
+    if (!orderId) return;
 
-  const loadMenu = async () => {
+    api
+      .get(`/orders/${orderId}`)
+      .then((res) => setOrder(res.data))
+      .catch((err) => console.error(err))
+      .finally(() => setLoading(false));
+  }, [orderId]);
+
+  if (loading) return <div className="p-6">Loading Bill...</div>;
+  if (!order) return <div className="p-6">Order not found.</div>;
+
+  // Basic Calculations
+  const subtotal = order.totalAmount || 0;
+  const gst = subtotal * 0.05; // 5% GST
+  const serviceCharge = subtotal * 0.1; // 10% service charge
+  const discountAmount = (discount / 100) * subtotal;
+
+  const grandTotal = subtotal + gst + serviceCharge - discountAmount;
+
+  // Handle Payment
+  const handlePayment = async () => {
+    if (!paymentMethod) return alert("Please select payment method");
+
     try {
-      const res = await api.get("/menu");
-      // ensure array
-      setMenu(Array.isArray(res.data) ? res.data : []);
+      await api.put(`/orders/pay/${orderId}`, {
+        paymentMethod,
+        customerName,
+        customerPhone,
+        discount: discountAmount,
+        tax: gst,
+        serviceCharge,
+        grandTotal,
+      });
+
+      alert("Payment successful!");
+      navigate("/dashboard");
     } catch (err) {
-      console.error("Menu Load Error:", err);
-      alert("Menu load failed. Check console.");
-    }
-  };
-
-  const addToCart = (item) => {
-    setCart((prev) => {
-      const found = prev.find((p) => p._id === item._id);
-      if (found) {
-        return prev.map((p) => p._id === item._id ? { ...p, quantity: p.quantity + 1 } : p);
-      }
-      return [...prev, { ...item, quantity: 1 }];
-    });
-  };
-
-  const updateQty = (id, qty) => {
-    setCart((prev) => prev.map((p) => (p._id === id ? { ...p, quantity: qty } : p)));
-  };
-
-  const removeItem = (id) => {
-    setCart((prev) => prev.filter((p) => p._id !== id));
-  };
-
-  const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
-  const discAmount = (subtotal * Number(discount || 0)) / 100;
-  const taxable = subtotal - discAmount;
-  const tax = (taxable * Number(taxPercent || 0)) / 100;
-  const grandTotal = taxable + tax;
-
-  const placeOrder = async () => {
-    if (!tableNumber) {
-      if (!confirm("Table number empty. Proceed as take-away?")) return;
-    }
-    if (cart.length === 0) {
-      alert("Cart empty");
-      return;
-    }
-    setLoading(true);
-    try {
-      const payload = {
-        tableNumber,
-        items: cart.map((c) => ({
-          menuItemId: c._id,
-          name: c.name,
-          price: c.price,
-          quantity: c.quantity,
-        })),
-        discount: Number(discount || 0),
-        taxPercent: Number(taxPercent || 0),
-        totals: {
-          subtotal,
-          discount: discAmount,
-          tax,
-          grandTotal,
-        },
-      };
-
-      const res = await api.post("/orders/create", payload);
-      const orderId = res.data.orderId || res.data._id || null;
-      const kotId = res.data.kotId || null;
-
-      alert("Order created. OrderId: " + orderId + (kotId ? " KOT: " + kotId : ""));
-      setCart([]);
-      setTableNumber("");
-      // optionally open payment modal or auto-pay
-    } catch (err) {
-      console.error("Place order error:", err.response?.data || err);
-      alert("Order failed. Check console.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const payOrder = async (orderId, method = "cash") => {
-    try {
-      await api.put(`/orders/pay/${orderId}`, { paymentMethod: method });
-      alert("Payment marked successful");
-    } catch (err) {
-      console.error("Payment error:", err.response?.data || err);
+      console.error(err);
       alert("Payment failed");
     }
   };
 
   return (
-    <div className="p-6 grid grid-cols-12 gap-4">
-      <div className="col-span-8 bg-white p-4 rounded shadow">
-        <h2 className="text-2xl font-bold mb-4">Menu</h2>
-        <div className="grid grid-cols-3 gap-3">
-          {menu.map((m) => (
-            <div key={m._id} onClick={() => addToCart(m)} className="border p-3 rounded cursor-pointer hover:bg-gray-50">
-              <div className="font-semibold">{m.name}</div>
-              <div className="text-sm text-gray-600">₹{m.price}</div>
-            </div>
-          ))}
+    <div className="max-w-2xl mx-auto p-6 bg-white shadow rounded mt-6">
+      <h1 className="text-3xl font-bold mb-4">Billing</h1>
+
+      {/* Order & Table Info */}
+      <div className="mb-3">
+        <strong>Order ID:</strong> {orderId}
+      </div>
+      <div className="mb-3">
+        <strong>Table:</strong> {order.tableNumber}
+      </div>
+
+      {/* Items */}
+      <h2 className="font-bold text-lg mb-2">Items</h2>
+      <ul className="border p-3 rounded mb-4">
+        {order.items.map((it, i) => (
+          <li key={i} className="flex justify-between border-b py-1">
+            <span>
+              {it.name} × {it.quantity}
+            </span>
+            <span>₹{(it.price * it.quantity).toFixed(2)}</span>
+          </li>
+        ))}
+      </ul>
+
+      {/* Customer Info */}
+      <h2 className="font-bold text-lg mb-2">Customer Details</h2>
+      <input
+        className="border p-2 w-full mb-2 rounded"
+        type="text"
+        placeholder="Customer Name"
+        value={customerName}
+        onChange={(e) => setCustomerName(e.target.value)}
+      />
+
+      <input
+        className="border p-2 w-full mb-4 rounded"
+        type="text"
+        placeholder="Phone Number"
+        value={customerPhone}
+        onChange={(e) => setCustomerPhone(e.target.value)}
+      />
+
+      {/* Bill Breakdown */}
+      <div className="space-y-1 mb-4">
+        <div className="flex justify-between">
+          <span>Subtotal</span>
+          <span>₹{subtotal.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>GST (5%)</span>
+          <span>₹{gst.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>Service Charge (10%)</span>
+          <span>₹{serviceCharge.toFixed(2)}</span>
+        </div>
+
+        {/* Discount */}
+        <div className="flex justify-between items-center">
+          <span>Discount (%)</span>
+          <input
+            type="number"
+            className="border p-1 w-20 rounded"
+            value={discount}
+            onChange={(e) => setDiscount(Number(e.target.value))}
+          />
+        </div>
+
+        <div className="flex justify-between font-bold text-xl mt-2">
+          <span>Grand Total</span>
+          <span>₹{grandTotal.toFixed(2)}</span>
         </div>
       </div>
 
-      <div className="col-span-4 bg-white p-4 rounded shadow">
-        <h2 className="text-xl font-bold mb-3">Cart</h2>
-        <input value={tableNumber} onChange={(e)=>setTableNumber(e.target.value)} placeholder="Table number (optional)" className="w-full border p-2 mb-2" />
-        <div className="space-y-2 max-h-64 overflow-auto">
-          {cart.map((c) => <CartItem key={c._id} item={c} onQtyChange={updateQty} onRemove={removeItem} />)}
-        </div>
-
-        <div className="mt-3 space-y-2">
-          <div>Subtotal: ₹{subtotal.toFixed(2)}</div>
-          <div>
-            Discount %: <input type="number" value={discount} onChange={(e)=>setDiscount(e.target.value)} className="w-20 inline border p-1 ml-2" />
-          </div>
-          <div>
-            Tax %: <input type="number" value={taxPercent} onChange={(e)=>setTaxPercent(e.target.value)} className="w-20 inline border p-1 ml-2" />
-          </div>
-          <div>Tax: ₹{tax.toFixed(2)}</div>
-          <div className="font-bold">Total: ₹{grandTotal.toFixed(2)}</div>
-        </div>
-
-        <button disabled={loading} onClick={placeOrder} className="mt-4 w-full bg-green-600 text-white p-2 rounded">
-          {loading ? "Processing..." : "Place Order"}
-        </button>
-
+      {/* Payment Method */}
+      <div className="mb-4">
+        <label className="font-semibold">Payment Method</label>
+        <select
+          className="border p-2 rounded w-full mt-1"
+          onChange={(e) => setPaymentMethod(e.target.value)}
+        >
+          <option value="">Select...</option>
+          <option value="cash">Cash</option>
+          <option value="card">Card</option>
+          <option value="upi">UPI</option>
+        </select>
       </div>
+
+      {/* Pay Button */}
+      <button
+        onClick={handlePayment}
+        className="p-3 bg-green-600 w-full text-white rounded text-lg shadow hover:bg-green-700"
+      >
+        Pay & Complete Order
+      </button>
     </div>
   );
 }
